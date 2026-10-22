@@ -7,6 +7,21 @@ const stateNames = {
   '01':'Alabama','02':'Alaska','04':'Arizona','05':'Arkansas','06':'California','08':'Colorado','09':'Connecticut','10':'Delaware','12':'Florida','13':'Georgia','15':'Hawaii','16':'Idaho','17':'Illinois','18':'Indiana','19':'Iowa','20':'Kansas','21':'Kentucky','22':'Louisiana','23':'Maine','24':'Maryland','25':'Massachusetts','26':'Michigan','27':'Minnesota','28':'Mississippi','29':'Missouri','30':'Montana','31':'Nebraska','32':'Nevada','33':'New Hampshire','34':'New Jersey','35':'New Mexico','36':'New York','37':'North Carolina','38':'North Dakota','39':'Ohio','40':'Oklahoma','41':'Oregon','42':'Pennsylvania','44':'Rhode Island','45':'South Carolina','46':'South Dakota','47':'Tennessee','48':'Texas','49':'Utah','50':'Vermont','51':'Virginia','53':'Washington','54':'West Virginia','55':'Wisconsin','56':'Wyoming'
 };
 
+const techCenters = [
+  {name:'Seattle / Redmond',coordinates:[-122.1215,47.6740]},
+  {name:'Silicon Valley',coordinates:[-122.1430,37.4419]},
+  {name:'Los Angeles',coordinates:[-118.2437,34.0522]},
+  {name:'San Diego',coordinates:[-117.1611,32.7157]},
+  {name:'Austin',coordinates:[-97.7431,30.2672]},
+  {name:'Denver / Boulder',coordinates:[-105.2705,40.0150]},
+  {name:'Chicago',coordinates:[-87.6298,41.8781]},
+  {name:'Atlanta',coordinates:[-84.3880,33.7490]},
+  {name:'Research Triangle',coordinates:[-78.6382,35.7796]},
+  {name:'Washington, D.C.',coordinates:[-77.0369,38.9072]},
+  {name:'New York City',coordinates:[-74.0060,40.7128]},
+  {name:'Boston / Cambridge',coordinates:[-71.1097,42.3736]}
+];
+
 
 const wrap = document.querySelector('#canvas-wrap');
 const tooltip = document.querySelector('#tooltip');
@@ -103,6 +118,23 @@ function addLabels() {
   }
 }
 
+function addTechCenters() {
+  const dotMaterial=new THREE.MeshBasicMaterial({color:'#c44835'});
+  const haloMaterial=new THREE.MeshBasicMaterial({color:'#fff0e7',transparent:true,opacity:.9,side:THREE.DoubleSide,depthWrite:false});
+  for(const center of techCenters) {
+    const projected=projection(center.coordinates);
+    if(!projected)continue;
+    const group=new THREE.Group();
+    group.position.copy(point(projected,depth+.012));
+    const halo=new THREE.Mesh(new THREE.RingGeometry(.085,.135,32),haloMaterial);
+    halo.renderOrder=5;group.add(halo);
+    const dot=new THREE.Mesh(new THREE.SphereGeometry(.075,20,14),dotMaterial);
+    dot.position.z=.052;dot.renderOrder=6;
+    dot.userData={type:'center',name:center.name,focus:group.position.clone()};
+    group.add(dot);scene.add(group);pickables.push(dot);
+  }
+}
+
 async function loadMap() {
   const response=await fetch('assets/states-albers-10m.json');
   if(!response.ok) throw new Error('Boundary data unavailable');
@@ -121,7 +153,7 @@ async function loadMap() {
       const geometry=new THREE.ExtrudeGeometry(shapeFor(rings),{depth,bevelEnabled:false,steps:1,curveSegments:1});
       addGeographicUVs(geometry);
       const part=new THREE.Mesh(geometry,[top,side]);
-      part.castShadow=true;part.receiveShadow=true;part.userData={id};
+      part.castShadow=true;part.receiveShadow=true;part.userData={type:'state',id};
       group.add(part);pickables.push(part);
     }
     states.set(id,group);land.add(group);
@@ -133,7 +165,7 @@ async function loadMap() {
   scene.add(lineLayer(interiors,'#647c6b',.72,depth+.003));
   const coast=topologyMesh(topology,topology.objects.nation);
   scene.add(lineLayer(coast,'#315848',.9,depth+.006));
-  addLabels();reset(false);
+  addTechCenters();addLabels();reset(false);
   document.querySelector('#loading').hidden=true;
   bindPointer();
 }
@@ -167,14 +199,15 @@ function focusState(id) {
   document.querySelector('#selection').textContent='Focused on '+stateNames[id];
 }
 function clearHover() {
-  if(hovered)states.get(hovered).userData.material.color.set(satelliteEnabled?'#ffffff':'#b4c6b7');
+  if(hovered?.userData.type==='state')states.get(hovered.userData.id).userData.material.color.set(satelliteEnabled?'#ffffff':'#b4c6b7');
+  if(hovered?.userData.type==='center')hovered.parent.scale.setScalar(1);
   hovered=null;tooltip.classList.remove('visible');
 }
 function hit(event) {
   const rect=renderer.domElement.getBoundingClientRect();
   pointer.set((event.clientX-rect.left)/rect.width*2-1,-(event.clientY-rect.top)/rect.height*2+1);
   raycaster.setFromCamera(pointer,camera);
-  return raycaster.intersectObjects(pickables,false)[0]?.object.userData.id;
+  return raycaster.intersectObjects(pickables,false)[0]?.object || null;
 }
 function bindPointer() {
   let down=null,dragging=false;
@@ -183,11 +216,11 @@ function bindPointer() {
   canvas.addEventListener('pointermove',e=>{
     if(down&&Math.hypot(e.clientX-down.x,e.clientY-down.y)>5)dragging=true;
     if(e.buttons||e.pointerType==='touch'){clearHover();return;}
-    const id=hit(e);
-    if(id!==hovered){clearHover();if(id){hovered=id;states.get(id).userData.material.color.set(satelliteEnabled?'#c9e8d4':'#93b2a0');}}
-    if(id){tooltip.textContent=stateNames[id];tooltip.style.left=e.clientX+'px';tooltip.style.top=e.clientY+'px';tooltip.classList.add('visible');}
+    const target=hit(e);
+    if(target!==hovered){clearHover();if(target){hovered=target;if(target.userData.type==='state')states.get(target.userData.id).userData.material.color.set(satelliteEnabled?'#c9e8d4':'#93b2a0');else target.parent.scale.setScalar(1.45);}}
+    if(target){tooltip.textContent=target.userData.type==='state'?stateNames[target.userData.id]:target.userData.name;tooltip.style.left=e.clientX+'px';tooltip.style.top=e.clientY+'px';tooltip.classList.add('visible');}
   });
-  canvas.addEventListener('pointerup',e=>{if(down&&!dragging){const id=hit(e);if(id)focusState(id);}down=null;});
+  canvas.addEventListener('pointerup',e=>{if(down&&!dragging){const target=hit(e);if(target?.userData.type==='state')focusState(target.userData.id);if(target?.userData.type==='center'){move(target.userData.focus.clone(),3.8);document.querySelector('#selection').textContent='Focused on '+target.userData.name;}}down=null;});
   canvas.addEventListener('pointercancel',()=>{down=null;clearHover();});
   canvas.addEventListener('pointerleave',clearHover);
 }

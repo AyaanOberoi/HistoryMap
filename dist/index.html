@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#f0eee7" />
+  <meta name="description" content="An interactive 3D history atlas tracing the rise of Redmond, Silicon Valley, and Austin as U.S. technology centers." />
+  <title>Tech Shift Atlas</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="assets/styles.css" />
+</head>
+<body>
+  <a class="skip-link" href="#text-alternative">Skip 3D map</a>
+  <main class="app-shell">
+    <header class="topbar">
+      <div class="brand" aria-label="Tech Shift Atlas">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span>TECH SHIFT ATLAS</span>
+      </div>
+      <div class="header-actions">
+        <button class="icon-button" id="present-button" type="button" aria-pressed="false">
+          <span aria-hidden="true">◫</span><span>Present</span>
+        </button>
+        <button class="icon-button" id="help-button" type="button" aria-expanded="false" aria-controls="help-card">
+          <span aria-hidden="true">?</span><span class="sr-only">Map controls help</span>
+        </button>
+      </div>
+    </header>
+
+    <section class="hero-copy" aria-labelledby="page-title">
+      <p class="eyebrow">AN INTERACTIVE HISTORY • 1930s—TODAY</p>
+      <h1 id="page-title">How technology<br /><em>found its place.</em></h1>
+      <p class="lede">Three regions. Different starting points. A changing mix of research, talent, investment, and policy.</p>
+    </section>
+
+    <section class="map-card" aria-label="Interactive three-dimensional map of the United States">
+      <div id="canvas-wrap">
+        <div class="loading" id="loading" role="status" aria-live="polite">
+          <span class="loader-orbit" aria-hidden="true"></span>
+          <strong>Building the map model</strong>
+          <small>Loading Census-based state boundaries…</small>
+        </div>
+        <div class="load-error" id="load-error" hidden role="alert">
+          <strong>The geographic data could not load.</strong>
+          <span>Check your connection, then reload this page. The text overview below is still available.</span>
+          <button type="button" onclick="location.reload()">Reload map</button>
+        </div>
+        <div id="map" aria-hidden="true"></div>
+        <div class="inset-label alaska-label">ALASKA<br /><small>INSET</small></div>
+        <div class="inset-label hawaii-label">HAWAII<br /><small>INSET</small></div>
+        <div class="tooltip" id="tooltip" role="status"></div>
+
+        <div class="view-controls" aria-label="Map view controls">
+          <button type="button" id="reset-view" title="Reset view"><span aria-hidden="true">↺</span><span>Reset</span></button>
+          <button type="button" id="top-view" title="Top-down view"><span aria-hidden="true">⌗</span><span>Top view</span></button>
+        </div>
+
+        <div class="location-nav" aria-label="Technology center locations">
+          <span class="nav-label">GO TO</span>
+          <button type="button" data-focus="redmond">Redmond</button>
+          <button type="button" data-focus="silicon-valley">Silicon Valley</button>
+          <button type="button" data-focus="austin">Austin</button>
+          <button type="button" id="compare-button" class="compare-button">Compare all <span aria-hidden="true">↗</span></button>
+        </div>
+
+        <aside class="info-panel" id="info-panel" aria-live="polite" aria-labelledby="panel-title">
+          <button class="panel-close" id="panel-close" type="button" aria-label="Close information panel">×</button>
+          <p class="panel-kicker" id="panel-kicker">FIELD NOTE</p>
+          <h2 id="panel-title">Select a place</h2>
+          <p id="panel-summary">Choose a state or one of the three technology-center markers to explore its story.</p>
+          <div id="panel-body"></div>
+        </aside>
+
+        <div class="help-card" id="help-card" hidden>
+          <strong>Explore the model</strong>
+          <span>Drag to rotate · Scroll or pinch to zoom · Right-drag or two-finger drag to pan · Click a state or marker to focus</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="comparison" id="comparison" aria-labelledby="comparison-title" hidden>
+      <div class="section-heading">
+        <div><p class="eyebrow">SIDE BY SIDE</p><h2 id="comparison-title">Three paths to a technology center</h2></div>
+        <button type="button" id="comparison-close">Close comparison</button>
+      </div>
+      <div class="comparison-grid" id="comparison-grid"></div>
+      <p class="edit-note">Editable sample content • Verify and expand these notes for your final project.</p>
+    </section>
+
+    <section class="text-alternative" id="text-alternative" aria-labelledby="text-title">
+      <div class="section-heading">
+        <div><p class="eyebrow">READABLE MAP ALTERNATIVE</p><h2 id="text-title">The story without the 3D view</h2></div>
+      </div>
+      <p>The map highlights Washington in the Pacific Northwest, California on the West Coast, and Texas in the south-central United States. Markers identify Redmond, Austin, and a representative point for Silicon Valley near Palo Alto. Alaska and Hawaii appear in labeled insets.</p>
+      <div class="text-grid" id="text-grid"></div>
+    </section>
+
+    <footer>
+      <p><strong>Map data</strong> U.S. Atlas state boundaries, derived from U.S. Census Bureau cartographic data. Composite Albers USA projection; Alaska and Hawaii are shown as insets. State heights are equal and do not encode economic data.</p>
+      <p><strong>Project note</strong> History text is editable sample content. Tax rules change; check the linked state sources before presenting.</p>
+    </footer>
+  </main>
+  <script type="module" src="assets/app.js"></script>
+</body>
+</html>

@@ -64,12 +64,60 @@ function addGeographicUVs(geometry) {
   uvs.needsUpdate=true;
 }
 
+function neutralizeSatelliteWater(texture) {
+  const source=texture.image;
+  const canvas=document.createElement('canvas');
+  canvas.width=source.naturalWidth||source.width;
+  canvas.height=source.naturalHeight||source.height;
+  const context=canvas.getContext('2d',{willReadFrequently:true});
+  context.drawImage(source,0,0,canvas.width,canvas.height);
+  try{
+    const image=context.getImageData(0,0,canvas.width,canvas.height);
+    const pixels=image.data;
+    for(let i=0;i<pixels.length;i+=4){
+      const red=pixels[i],green=pixels[i+1],blue=pixels[i+2];
+      // Esri ocean pixels are strongly blue/cyan. Clearing only that range
+      // removes water trapped inside the simplified Census coastline.
+      if(blue>70&&blue>red+18&&green>red*1.12){
+        pixels[i+3]=0;
+      }
+    }
+    context.putImageData(image,0,0);
+    texture.image=canvas;
+    texture.needsUpdate=true;
+  }catch(error){
+    console.warn('Satellite water-edge cleanup unavailable',error);
+  }
+  return texture;
+}
+
 function lineLayer(multiline,color,opacity,z) {
   const segments=[];
   for(const line of multiline.coordinates)for(let i=1;i<line.length;i++)segments.push(point(line[i-1],z),point(line[i],z));
   const layer=new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(segments),new THREE.LineBasicMaterial({color,transparent:true,opacity,depthWrite:false}));
   layer.renderOrder=4;
   return layer;
+}
+
+function coastlineRibbon(multiline,width,color,z) {
+  const triangles=[];
+  const half=width/2;
+  for(const line of multiline.coordinates)for(let i=1;i<line.length;i++){
+    const a=point(line[i-1],z),b=point(line[i],z);
+    const dx=b.x-a.x,dy=b.y-a.y,length=Math.hypot(dx,dy);
+    if(!length)continue;
+    const ox=-dy/length*half,oy=dx/length*half;
+    triangles.push(
+      a.x+ox,a.y+oy,z, a.x-ox,a.y-oy,z, b.x+ox,b.y+oy,z,
+      b.x+ox,b.y+oy,z, a.x-ox,a.y-oy,z, b.x-ox,b.y-oy,z
+    );
+  }
+  const geometry=new THREE.BufferGeometry();
+  geometry.setAttribute('position',new THREE.Float32BufferAttribute(triangles,3));
+  const material=new THREE.MeshBasicMaterial({color,transparent:true,opacity:.96,depthWrite:false,side:THREE.DoubleSide});
+  const ribbon=new THREE.Mesh(geometry,material);
+  ribbon.renderOrder=3;
+  return ribbon;
 }
 
 function initialize() {
@@ -145,8 +193,10 @@ async function loadMap() {
     const id=String(f.id).padStart(2,'0');if(!stateNames[id])continue;
     const group=new THREE.Group();
     const top=new THREE.MeshStandardMaterial({color:'#b4c6b7',roughness:.87,metalness:0});
-    const side=new THREE.MeshStandardMaterial({color:'#718b7b',roughness:.92});
-    group.userData={id,material:top};
+    // Keep the vertical wall unlit so cool scene lighting cannot turn the
+    // raised coastline into a blue/cyan rim in satellite mode.
+    const side=new THREE.MeshBasicMaterial({color:'#718b7b'});
+    group.userData={id,material:top,sideMaterial:side};
     const polygons=f.geometry.type==='Polygon'?[f.geometry.coordinates]:f.geometry.coordinates;
     for(const rings of polygons) {
       // No bevel expansion: adjoining polygons keep their exact shared edge.
@@ -164,6 +214,9 @@ async function loadMap() {
   const interiors=topologyMesh(topology,topology.objects.states,(a,b)=>a!==b);
   scene.add(lineLayer(interiors,'#647c6b',.72,depth+.003));
   const coast=topologyMesh(topology,topology.objects.nation);
+  // A narrow solid edge masks ocean pixels where imagery and the simplified
+  // coastline differ by a few pixels, while preserving the authoritative arc.
+  scene.add(coastlineRibbon(coast,.055,'#263b34',depth+.004));
   scene.add(lineLayer(coast,'#315848',.9,depth+.006));
   addTechCenters();addLabels();reset(false);
   document.querySelector('#loading').hidden=true;
@@ -262,7 +315,13 @@ document.querySelector('#satellite-view').addEventListener('click',async event=>
     try{
       const url='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=-180,15,-60,72&bboxSR=4326&imageSR=4326&size=2048,1024&format=jpg&f=image';
       satelliteTexture=await new THREE.TextureLoader().loadAsync(url);
+      neutralizeSatelliteWater(satelliteTexture);
       satelliteTexture.colorSpace=THREE.SRGBColorSpace;
+      // Mipmaps blend nearby ocean pixels into the cut coastline. Linear
+      // filtering keeps the imagery crisp without creating a blue halo.
+      satelliteTexture.generateMipmaps=false;
+      satelliteTexture.minFilter=THREE.LinearFilter;
+      satelliteTexture.magFilter=THREE.LinearFilter;
       satelliteTexture.anisotropy=renderer.capabilities.getMaxAnisotropy();
     }catch(error){console.error('Satellite layer unavailable',error);button.title='Satellite imagery could not load';button.disabled=false;button.querySelector('span').textContent='Satellite';return;}
     button.disabled=false;button.querySelector('span').textContent='Satellite';
@@ -270,10 +329,14 @@ document.querySelector('#satellite-view').addEventListener('click',async event=>
   satelliteEnabled=!satelliteEnabled;
   for(const state of states.values()){
     const material=state.userData.material;
+    const sideMaterial=state.userData.sideMaterial;
     material.map=satelliteEnabled?satelliteTexture:null;
     material.color.set(satelliteEnabled?'#ffffff':'#b4c6b7');
     material.roughness=satelliteEnabled ? .94 : .87;
+    material.alphaTest=satelliteEnabled ? .5 : 0;
     material.needsUpdate=true;
+    sideMaterial.color.set(satelliteEnabled?'#1d2421':'#718b7b');
+    sideMaterial.needsUpdate=true;
   }
   button.setAttribute('aria-pressed',String(satelliteEnabled));
   button.title=satelliteEnabled?'Show neutral map':'Show satellite imagery';

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { geoAlbersUsa } from 'd3-geo';
 import { feature, mesh as topologyMesh } from 'topojson-client';
 
 const stateNames = {
@@ -14,8 +15,11 @@ const states = new Map(), pickables = [], labels = [];
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const depth = .12;
 const point = ([x,y], z=0) => new THREE.Vector3((x-480)*.015, -(y-300)*.015, z);
+const projection = geoAlbersUsa().scale(1280).translate([480,300]);
 let renderer, camera, controls, scene, hovered, transition, mapBounds;
 let topDown = false;
+let satelliteTexture = null;
+let satelliteEnabled = false;
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
 
@@ -29,6 +33,28 @@ function shapeFor(rings) {
     shape.holes.push(new THREE.Path(pts));
   }
   return shape;
+}
+
+function addGeographicUVs(geometry) {
+  const positions=geometry.getAttribute('position');
+  const uvs=geometry.getAttribute('uv');
+  for(let i=0;i<positions.count;i++) {
+    const projected=[positions.getX(i)/.015+480,-positions.getY(i)/.015+300];
+    const geographic=projection.invert(projected);
+    if(!geographic){uvs.setXY(i,.5,.5);continue;}
+    let [longitude,latitude]=geographic;
+    if(longitude>0)longitude-=360;
+    uvs.setXY(i,THREE.MathUtils.clamp((longitude+180)/120,0,1),THREE.MathUtils.clamp((latitude-15)/57,0,1));
+  }
+  uvs.needsUpdate=true;
+}
+
+function lineLayer(multiline,color,opacity,z) {
+  const segments=[];
+  for(const line of multiline.coordinates)for(let i=1;i<line.length;i++)segments.push(point(line[i-1],z),point(line[i],z));
+  const layer=new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(segments),new THREE.LineBasicMaterial({color,transparent:true,opacity,depthWrite:false}));
+  layer.renderOrder=4;
+  return layer;
 }
 
 function initialize() {
@@ -93,6 +119,7 @@ async function loadMap() {
     for(const rings of polygons) {
       // No bevel expansion: adjoining polygons keep their exact shared edge.
       const geometry=new THREE.ExtrudeGeometry(shapeFor(rings),{depth,bevelEnabled:false,steps:1,curveSegments:1});
+      addGeographicUVs(geometry);
       const part=new THREE.Mesh(geometry,[top,side]);
       part.castShadow=true;part.receiveShadow=true;part.userData={id};
       group.add(part);pickables.push(part);
@@ -101,14 +128,11 @@ async function loadMap() {
   }
   if(states.size!==50)throw new Error('Expected all 50 states');
   scene.add(land);mapBounds=new THREE.Box3().setFromObject(land);
-  // TopoJSON mesh emits shared arcs once, avoiding doubled or flickering borders.
-  const borders=topologyMesh(topology,topology.objects.states);
-  const segments=[];
-  for(const line of borders.coordinates) {
-    for(let i=1;i<line.length;i++)segments.push(point(line[i-1],depth+.003),point(line[i],depth+.003));
-  }
-  const boundaries=new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(segments),new THREE.LineBasicMaterial({color:'#627f6b',transparent:true,opacity:.55,depthWrite:false}));
-  scene.add(boundaries);
+  // TopoJSON shared arcs provide one authoritative edge for both adjoining states.
+  const interiors=topologyMesh(topology,topology.objects.states,(a,b)=>a!==b);
+  scene.add(lineLayer(interiors,'#647c6b',.72,depth+.003));
+  const coast=topologyMesh(topology,topology.objects.nation);
+  scene.add(lineLayer(coast,'#315848',.9,depth+.006));
   addLabels();reset(false);
   document.querySelector('#loading').hidden=true;
   bindPointer();
@@ -143,7 +167,7 @@ function focusState(id) {
   document.querySelector('#selection').textContent='Focused on '+stateNames[id];
 }
 function clearHover() {
-  if(hovered)states.get(hovered).userData.material.color.set('#b4c6b7');
+  if(hovered)states.get(hovered).userData.material.color.set(satelliteEnabled?'#ffffff':'#b4c6b7');
   hovered=null;tooltip.classList.remove('visible');
 }
 function hit(event) {
@@ -160,7 +184,7 @@ function bindPointer() {
     if(down&&Math.hypot(e.clientX-down.x,e.clientY-down.y)>5)dragging=true;
     if(e.buttons||e.pointerType==='touch'){clearHover();return;}
     const id=hit(e);
-    if(id!==hovered){clearHover();if(id){hovered=id;states.get(id).userData.material.color.set('#93b2a0');}}
+    if(id!==hovered){clearHover();if(id){hovered=id;states.get(id).userData.material.color.set(satelliteEnabled?'#c9e8d4':'#93b2a0');}}
     if(id){tooltip.textContent=stateNames[id];tooltip.style.left=e.clientX+'px';tooltip.style.top=e.clientY+'px';tooltip.classList.add('visible');}
   });
   canvas.addEventListener('pointerup',e=>{if(down&&!dragging){const id=hit(e);if(id)focusState(id);}down=null;});
@@ -197,6 +221,30 @@ document.querySelector('#reset-view').addEventListener('click',()=>reset());
 document.querySelector('#top-view').addEventListener('click',()=>{
   topDown=!topDown;document.querySelector('#top-view').setAttribute('aria-pressed',String(topDown));
   move(controls.target.clone(),camera.zoom);
+});
+document.querySelector('#satellite-view').addEventListener('click',async event=>{
+  const button=event.currentTarget;
+  if(!satelliteTexture){
+    button.disabled=true;button.querySelector('span').textContent='Loading…';
+    try{
+      const url='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=-180,15,-60,72&bboxSR=4326&imageSR=4326&size=2048,1024&format=jpg&f=image';
+      satelliteTexture=await new THREE.TextureLoader().loadAsync(url);
+      satelliteTexture.colorSpace=THREE.SRGBColorSpace;
+      satelliteTexture.anisotropy=renderer.capabilities.getMaxAnisotropy();
+    }catch(error){console.error('Satellite layer unavailable',error);button.title='Satellite imagery could not load';button.disabled=false;button.querySelector('span').textContent='Satellite';return;}
+    button.disabled=false;button.querySelector('span').textContent='Satellite';
+  }
+  satelliteEnabled=!satelliteEnabled;
+  for(const state of states.values()){
+    const material=state.userData.material;
+    material.map=satelliteEnabled?satelliteTexture:null;
+    material.color.set(satelliteEnabled?'#ffffff':'#b4c6b7');
+    material.roughness=satelliteEnabled ? .94 : .87;
+    material.needsUpdate=true;
+  }
+  button.setAttribute('aria-pressed',String(satelliteEnabled));
+  button.title=satelliteEnabled?'Show neutral map':'Show satellite imagery';
+  document.querySelector('#imagery-credit').hidden=!satelliteEnabled;
 });
 for(const [id,factor] of [['zoom-in',1.3],['zoom-out',1/1.3]])document.querySelector('#'+id).addEventListener('click',()=>move(controls.target.clone(),THREE.MathUtils.clamp(camera.zoom*factor,.15,8)));
 const present=document.querySelector('#present-button');

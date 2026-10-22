@@ -14,10 +14,11 @@
 <div id="labels" aria-hidden="true"></div><div id="tooltip" role="status"></div>
 <nav class="toolbar" aria-label="Map controls">
 <button id="reset-view">↺ <span>Reset</span></button><button id="top-view" aria-pressed="false">⊞ <span>Top view</span></button>
+<button id="satellite-view" aria-pressed="false" title="Show satellite imagery">◉ <span>Satellite</span></button>
 <span class="divider"></span><button id="zoom-in" aria-label="Zoom in">+</button><button id="zoom-out" aria-label="Zoom out">−</button>
 <span class="divider"></span><label class="sr-only" for="state-select">Focus on a state</label><select id="state-select"><option value="">Find a state</option></select>
 </nav>
 <div class="hint">Drag to rotate <span>·</span> Scroll to zoom <span>·</span> Right-drag to pan</div>
-<details class="credits"><summary>Map credits</summary><p><a href="https://github.com/topojson/us-atlas" target="_blank" rel="noopener">U.S. Atlas</a> · Census-derived cartographic boundaries. Albers USA composite projection. Alaska is reduced and both Alaska and Hawaii are repositioned as insets. Equal state heights; no data encoded.</p></details>
+<details class="credits"><summary>Map credits</summary><p><a href="https://github.com/topojson/us-atlas" target="_blank" rel="noopener">U.S. Atlas</a> · Census-derived state topology at 1:10m. Shared arcs are rendered once so adjacent state borders match exactly. Albers USA composite projection; Alaska and Hawaii are repositioned as insets. Equal state heights; no data encoded. <span id="imagery-credit" hidden>Satellite layer: <a href="https://www.arcgis.com/home/item.html?id=10df2279f9684e4a9f6a7f08febac2a9" target="_blank" rel="noopener">Esri World Imagery</a>; source attribution varies by area.</span></p></details>
 <p id="selection" class="sr-only" aria-live="polite">All 50 states shown. Choose a state with the Find a state control to focus the map.</p>
 </main><script type="module" src="assets/app.js"></script></body></html>

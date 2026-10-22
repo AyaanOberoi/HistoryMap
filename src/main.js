@@ -72,7 +72,6 @@ let selectable = [], hovered = null, markerMeshes = new Map();
 let animation = null;
 const stateGroups = new Map();
 const baseColor = new THREE.Color('#b8c0b4');
-const accentColor = new THREE.Color('#a84f35');
 const hoverColor = new THREE.Color('#d47a58');
 
 const projection = geoAlbersUsa().scale(1280).translate([480, 300]);
@@ -212,9 +211,8 @@ async function loadMap() {
     for (const f of geo.features) {
       const id = String(f.id).padStart(2, '0');
       if (!stateNames[id]) continue;
-      const highlighted = ['06','48','53'].includes(id);
-      const material = new THREE.MeshStandardMaterial({ color: highlighted ? accentColor : baseColor, roughness: .78, metalness: .02, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
-      const group = new THREE.Group(); group.userData = { id, material, base: highlighted ? accentColor.clone() : baseColor.clone() };
+      const material = new THREE.MeshStandardMaterial({ color: baseColor, roughness: .78, metalness: .02, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
+      const group = new THREE.Group(); group.userData = { id, material, base: baseColor.clone() };
       const polygons = f.geometry.type === 'Polygon' ? [f.geometry.coordinates] : f.geometry.coordinates;
       polygons.forEach(poly => addPolygon(group, poly, material, id));
       mapGroup.add(group); stateGroups.set(id, group);
